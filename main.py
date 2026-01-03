@@ -46,7 +46,29 @@ def convert_transaction_to_monarch(transaction: dict, account_description: str) 
     
     # Extract merchant from description or use transaction type
     description = transaction.get('description', '')
+    
+    # Remove common prefixes that ws-api/Wealthsimple adds to descriptions
+    # Order matters: check longer/more specific prefixes first
+    prefixes_to_remove = [
+        '(Pending) Credit card purchase: ',
+        '(Pending) Credit card refund: ',
+        'Credit card purchase: ',
+        'Credit card refund: ',
+        'Deposit: ',
+        'Withdrawal: ',
+        '(Pending) ',
+    ]
+    
+    def remove_prefixes(text: str) -> str:
+        """Remove common prefixes from transaction descriptions."""
+        for prefix in prefixes_to_remove:
+            if text.startswith(prefix):
+                return text[len(prefix):].strip()
+        return text
+    
+    # Clean up merchant name by removing common prefixes
     merchant = description if description else transaction.get('type', 'Unknown')
+    merchant = remove_prefixes(merchant)
     
     # Category is left empty for user to categorize in Monarch
     category = ''
@@ -54,8 +76,8 @@ def convert_transaction_to_monarch(transaction: dict, account_description: str) 
     # Account name
     account = account_description
     
-    # Original statement is the full description
-    original_statement = description
+    # Original statement - also cleaned of prefixes
+    original_statement = remove_prefixes(description) if description else description
     
     # Notes include transaction type and subtype if available
     notes_parts = []
