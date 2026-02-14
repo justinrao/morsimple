@@ -11,15 +11,125 @@ import csv
 import json
 import keyring
 import os
+import sys
+import tty
+import termios
 import yaml
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, WSAPISession
 
 from categories import load_rules, categorize_transaction
+
+
+def read_key() -> str:
+    """Read a single keypress, handling arrow keys and special keys."""
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+    try:
+        tty.setraw(fd)
+        ch = sys.stdin.read(1)
+        if ch == '\x1b':  # Escape sequence
+            ch2 = sys.stdin.read(1)
+            if ch2 == '[':
+                ch3 = sys.stdin.read(1)
+                if ch3 == 'A':
+                    return 'up'
+                elif ch3 == 'B':
+                    return 'down'
+            return 'escape'
+        return ch
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
+
+def get_terminal_width() -> int:
+    """Get terminal width, defaulting to 80."""
+    try:
+        return os.get_terminal_size().columns
+    except OSError:
+        return 80
+
+
+def interactive_select(items: List[str]) -> List[int]:
+    """Interactive multi-select menu with cursor navigation.
+
+    Controls: j/down = move down, k/up = move up, enter/space = toggle, q = confirm
+
+    Returns list of selected indices (0-based, excluding the 'All' option).
+    """
+    cursor = 0
+    # selected[0] = All, selected[1..n] = individual items
+    selected = [False] * (len(items) + 1)
+    total_lines = len(items) + 1  # +1 for "All"
+    term_width = get_terminal_width()
+    # Fixed number of output lines: menu items + blank + help
+    num_lines = total_lines + 2
+    CLEAR_LINE = '\x1b[2K'  # ANSI: erase entire line
+
+    def render():
+        lines = []
+        for i in range(total_lines):
+            arrow = '>' if i == cursor else ' '
+            check = 'x' if selected[i] else ' '
+            if i == 0:
+                line = f"  {arrow} [{check}] 0. All"
+            else:
+                line = f"  {arrow} [{check}] {i:>2}. {items[i - 1]}"
+            # Truncate to terminal width to prevent wrapping
+            lines.append(line[:term_width])
+        lines.append("")
+        lines.append("  j/\u2193 down  k/\u2191 up  enter toggle  q confirm")
+        return lines
+
+    # Initial draw
+    output = render()
+    sys.stdout.write('\n'.join(output))
+    sys.stdout.flush()
+
+    while True:
+        key = read_key()
+
+        if key in ('j', 'down'):
+            cursor = min(cursor + 1, total_lines - 1)
+        elif key in ('k', 'up'):
+            cursor = max(cursor - 1, 0)
+        elif key in ('\r', '\n', ' '):
+            if cursor == 0:
+                # Toggle All
+                new_state = not selected[0]
+                selected = [new_state] * (len(items) + 1)
+            else:
+                selected[cursor] = not selected[cursor]
+                # Update All: checked if all individual items are selected
+                selected[0] = all(selected[1:])
+        elif key == 'q':
+            break
+        elif key == 'escape':
+            break
+        else:
+            continue
+
+        # Move cursor up to top of menu, clear each line, and redraw
+        sys.stdout.write(f'\x1b[{num_lines - 1}A\r')
+        output = render()
+        for i, line in enumerate(output):
+            sys.stdout.write(f'{CLEAR_LINE}{line}')
+            if i < len(output) - 1:
+                sys.stdout.write('\n')
+        sys.stdout.flush()
+
+    # Move past the menu
+    sys.stdout.write('\n')
+
+    # If All or nothing selected, return all
+    indices = [i - 1 for i in range(1, total_lines) if selected[i]]
+    if not indices or selected[0]:
+        return list(range(len(items)))
+    return indices
 
 
 def sanitize_filename(name: str) -> str:
@@ -307,6 +417,22 @@ def main():
         print("\nFetching accounts...")
         accounts = ws.get_accounts()
         print(f"Found {len(accounts)} account(s)")
+
+        # Interactive account selection
+        print("\nSelect accounts to export:")
+        account_labels = []
+        for a in accounts:
+            desc = a.get('description', '')
+            number = a.get('number', a['id'])
+            currency = a.get('currency', 'CAD')
+            if desc and desc != number:
+                account_labels.append(f"{desc} ({number}) [{currency}]")
+            else:
+                account_labels.append(f"{number} [{currency}]")
+        selected_indices = interactive_select(account_labels)
+        accounts = [accounts[i] for i in selected_indices]
+
+        print(f"Processing {len(accounts)} account(s)...")
 
         # Process each account
         for account in accounts:
