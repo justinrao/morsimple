@@ -121,5 +121,5 @@ python3 validate_csv.py output/*.csv
 
 ## License
 
-[Add your license here]
+This project is licensed under the [GPL-3.0](LICENSE).
 
