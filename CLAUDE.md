@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Wealthsimple to Monarch CSV Converter — a Python CLI tool that authenticates with Wealthsimple via the `ws-api` library, retrieves transaction and balance history for all accounts, and exports CSV files formatted for Monarch Money import.
+Wealthsimple to Monarch CSV Converter — a Python CLI tool that authenticates with Wealthsimple via the `ws-api` library, retrieves transaction and balance history for selected accounts, and exports CSV files formatted for Monarch Money import with auto-categorization.
 
 ## Commands
 
@@ -12,8 +12,12 @@ Wealthsimple to Monarch CSV Converter — a Python CLI tool that authenticates w
 # Install dependencies
 pip3 install -r requirements.txt
 
-# Run the converter (interactive — prompts for credentials)
+# Run the converter (interactive — prompts for credentials, account selection)
 python3 main.py
+
+# Filter by date range
+python3 main.py --start-date 2024-01-01
+python3 main.py --start-date 2024-01-01 --end-date 2024-12-31
 
 # Validate exported CSVs
 python3 validate_csv.py output/*.csv        # specific files
@@ -25,13 +29,15 @@ There are no automated tests. See TESTING.md for manual testing procedures.
 
 ## Architecture
 
-- **`main.py`** — Entry point. Handles Wealthsimple authentication (with keyring-based session persistence), fetches accounts via `ws.get_accounts()`, then for each account fetches transactions (`ws.get_activities()`) and balance history (`ws.get_account_historical_financials()`). Converts each to Monarch format and writes per-account CSVs to `output/`. Supports `--start-date` and `--end-date` flags.
+- **`main.py`** — Entry point. Handles authentication (with keyring session persistence and saved username via `.config.yaml`), fetches accounts, presents an interactive account selector (j/k navigation, enter to toggle, q to confirm), then fetches transactions (`ws.get_activities()`) and balance history (`ws.get_account_historical_financials()`) per account. Supports `--start-date`/`--end-date` for transactions (balance history always fetches full history). Writes per-account CSVs to `output/`.
 
-- **`categories.py`** — Auto-categorization engine. Loads rules from `category_rules.yaml` (gitignored, personal). Maps transactions to Monarch categories using type-based rules (INTEREST, DIVIDEND, etc.) and keyword-based merchant matching for credit card transactions. Returns empty string for unrecognized transactions.
+- **`categories.py`** — Auto-categorization engine. Loads rules from `category_rules.yaml` (gitignored). Two rule types: `type_rules` match on transaction type/subtype (INTEREST, DIVIDEND, DIY_BUY, etc.), `merchant_rules` do case-insensitive keyword substring matching for credit card transactions. First match wins. Returns empty string for unrecognized transactions.
 
-- **`category_rules.example.yaml`** — Template rules file. Copy to `category_rules.yaml` to enable categorization. Contains `type_rules` (matched on transaction type/subtype) and `merchant_rules` (case-insensitive keyword substring matching, first match wins).
+- **`category_rules.example.yaml`** — Template rules file with generic Canadian merchants. Copy to `category_rules.yaml` to enable categorization. The personal copy is gitignored.
 
-- **`validate_csv.py`** — Standalone validation utility. Checks exported CSVs against Monarch's expected format (column names, column order, date format MM/DD/YYYY, amount format).
+- **`validate_csv.py`** — Standalone CSV validation against Monarch's format (column names/order, date format MM/DD/YYYY, amount format).
+
+- **`.config.yaml`** — Stores last-used Wealthsimple username (gitignored).
 
 ## Key Data Formats
 
@@ -45,8 +51,14 @@ Amounts: negative for debits, positive for credits. `DIY_BUY` transactions are a
 
 Wealthsimple prepends prefixes to descriptions (e.g., `"Credit card purchase: "`, `"(Pending) Credit card refund: "`). These are stripped from both Merchant and Original Statement fields. Prefix matching is order-dependent — longer/more specific prefixes are checked first (see `prefixes_to_remove` list in `convert_transaction_to_monarch`).
 
+## Gitignored Personal Files
+
+- `category_rules.yaml` — personal category rules
+- `.config.yaml` — saved username
+- `output/` — exported CSV files
+
 ## Dependencies
 
 - `ws-api` — Wealthsimple API client (provides `WealthsimpleAPI`, `WSAPISession`, `OTPRequiredException`, `LoginFailedException`)
 - `keyring` — System keyring for secure credential/session storage (service name: `morsimple.wealthsimple`)
-- `pyyaml` — YAML parser for category rules file
+- `pyyaml` — YAML parser for category rules and config files
