@@ -6,16 +6,20 @@ This script authenticates with Wealthsimple, retrieves account transactions
 and balance history, and exports them as CSV files formatted for Monarch Money.
 """
 
+import argparse
 import csv
 import json
 import keyring
 import os
+import yaml
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Tuple
+from typing import Optional, Tuple
 
 from ws_api import WealthsimpleAPI, OTPRequiredException, LoginFailedException, WSAPISession
+
+from categories import load_rules, categorize_transaction
 
 
 def sanitize_filename(name: str) -> str:
@@ -39,7 +43,7 @@ def format_date_for_monarch(date_str: str) -> str:
         return date_str
 
 
-def convert_transaction_to_monarch(transaction: dict, account_description: str) -> dict:
+def convert_transaction_to_monarch(transaction: dict, account_description: str, rules: dict) -> dict:
     """Convert a Wealthsimple transaction to Monarch CSV format."""
     # Parse the occurredAt date
     date = format_date_for_monarch(transaction.get('occurredAt', ''))
@@ -70,8 +74,13 @@ def convert_transaction_to_monarch(transaction: dict, account_description: str) 
     merchant = description if description else transaction.get('type', 'Unknown')
     merchant = remove_prefixes(merchant)
     
-    # Category is left empty for user to categorize in Monarch
-    category = ''
+    # Auto-categorize based on transaction type and merchant name
+    category = categorize_transaction(
+        tx_type=transaction.get('type', ''),
+        sub_type=transaction.get('subType'),
+        merchant=merchant,
+        rules=rules,
+    )
     
     # Account name
     account = account_description
@@ -122,7 +131,7 @@ def convert_balance_to_monarch(balance_data: dict) -> dict:
     date = format_date_for_monarch(balance_data.get('date', ''))
     
     # Get net liquidation value
-    net_liquidation = balance_data.get('netLiquidationValueV2', {})
+    net_liquidation = balance_data.get('netLiquidationValueV2') or {}
     if 'cents' in net_liquidation:
         amount = net_liquidation['cents'] / 100.0
     elif 'amount' in net_liquidation:
@@ -139,7 +148,7 @@ def convert_balance_to_monarch(balance_data: dict) -> dict:
     }
 
 
-def export_transactions_csv(transactions: list, account_description: str, account_number: str, output_dir: Path):
+def export_transactions_csv(transactions: list, account_description: str, account_number: str, output_dir: Path, rules: dict):
     """Export transactions to CSV file in Monarch format."""
     if not transactions:
         print(f"  No transactions found for account {account_number}")
@@ -151,7 +160,7 @@ def export_transactions_csv(transactions: list, account_description: str, accoun
     
     # Convert transactions to Monarch format
     monarch_transactions = [
-        convert_transaction_to_monarch(tx, account_description)
+        convert_transaction_to_monarch(tx, account_description, rules)
         for tx in transactions
     ]
     
@@ -197,8 +206,25 @@ def authenticate_wealthsimple(keyring_service_name: str = "morsimple.wealthsimpl
     def persist_session_fct(sess, uname):
         keyring.set_password(f"{keyring_service_name}.{uname}", "session", sess)
     
-    # Try to get existing session
-    username = input("Wealthsimple username (email): ").strip()
+    # Load saved username as default
+    config_file = Path(__file__).parent / '.config.yaml'
+    saved_username = ''
+    if config_file.exists():
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f) or {}
+            saved_username = config.get('username', '')
+
+    # Prompt for username with saved default
+    if saved_username:
+        username = input(f"Wealthsimple username (email) [{saved_username}]: ").strip()
+        if not username:
+            username = saved_username
+    else:
+        username = input("Wealthsimple username (email): ").strip()
+
+    # Save username for next time
+    with open(config_file, 'w') as f:
+        yaml.dump({'username': username}, f)
     session = keyring.get_password(f"{keyring_service_name}.{username}", "session")
     
     if session:
@@ -239,46 +265,74 @@ def authenticate_wealthsimple(keyring_service_name: str = "morsimple.wealthsimpl
     return ws, username
 
 
+def parse_date(date_str: str) -> datetime:
+    """Parse a date string in YYYY-MM-DD format."""
+    try:
+        return datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"Invalid date format: '{date_str}'. Use YYYY-MM-DD.")
+
+
 def main():
     """Main function to fetch data and export CSVs."""
+    parser = argparse.ArgumentParser(description="Wealthsimple to Monarch CSV Converter")
+    parser.add_argument('--start-date', type=parse_date, default=None,
+                        help='Start date for transactions/balances (YYYY-MM-DD)')
+    parser.add_argument('--end-date', type=parse_date, default=None,
+                        help='End date for transactions/balances (YYYY-MM-DD)')
+    args = parser.parse_args()
+
     print("Wealthsimple to Monarch CSV Converter")
     print("=" * 50)
-    
+
+    if args.start_date:
+        print(f"Start date: {args.start_date.strftime('%Y-%m-%d')}")
+    if args.end_date:
+        print(f"End date: {args.end_date.strftime('%Y-%m-%d')}")
+
+    # Load category rules
+    rules = load_rules()
+
     # Create output directory
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
-    
+
     try:
         # Authenticate
         print("\nAuthenticating with Wealthsimple...")
         ws, username = authenticate_wealthsimple()
         print("Authentication successful!")
-        
+
         # Fetch accounts
         print("\nFetching accounts...")
         accounts = ws.get_accounts()
         print(f"Found {len(accounts)} account(s)")
-        
+
         # Process each account
         for account in accounts:
             account_id = account['id']
             account_number = account.get('number', account_id)
             account_description = account.get('description', account_number)
             currency = account.get('currency', 'CAD')
-            
+
             print(f"\nProcessing account: {account_description} ({account_number})")
-            
+
             # Fetch transactions
             try:
                 print("  Fetching transactions...")
-                transactions = ws.get_activities(account_id)
+                transactions = ws.get_activities(
+                    account_id,
+                    start_date=args.start_date,
+                    end_date=args.end_date,
+                    load_all=True,
+                )
                 # Reverse to get chronological order (oldest first)
                 if transactions:
                     transactions.reverse()
-                export_transactions_csv(transactions, account_description, account_number, output_dir)
+                export_transactions_csv(transactions, account_description, account_number, output_dir, rules)
             except Exception as e:
                 print(f"  Error fetching transactions: {e}")
-            
+
             # Fetch balance history
             try:
                 print("  Fetching balance history...")
@@ -286,10 +340,10 @@ def main():
                 export_balances_csv(balances, account_number, output_dir)
             except Exception as e:
                 print(f"  Error fetching balance history: {e}")
-        
+
         print("\n" + "=" * 50)
         print("Export complete! CSV files are in the 'output' directory.")
-        
+
     except KeyboardInterrupt:
         print("\n\nOperation cancelled by user.")
     except Exception as e:

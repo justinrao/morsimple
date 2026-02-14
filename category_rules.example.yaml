@@ -1,0 +1,290 @@
+# Category Rules for Wealthsimple to Monarch CSV Converter
+#
+# Copy this file to category_rules.yaml and customize:
+#   cp category_rules.example.yaml category_rules.yaml
+#
+# Rules are evaluated top-to-bottom. First match wins.
+# category_rules.yaml is gitignored so your personal rules stay private.
+
+# Type-based rules: matched on transaction type and optional subtype.
+# If subtype is omitted, matches any subtype for that type.
+# More specific rules (with subtype) should come before general ones.
+type_rules:
+  # Income
+  - type: INTEREST
+    category: Interest
+  - type: DIVIDEND
+    subtype: CASH_DIVIDEND
+    category: Dividends & Capital Gains
+  - type: DIVIDEND
+    category: Dividends & Capital Gains
+
+  # Investment buys
+  - type: DIY_BUY
+    subtype: RECURRING_ORDER
+    category: Investment
+  - type: DIY_BUY
+    subtype: DIVIDEND_REINVESTMENT
+    category: Investment
+  - type: DIY_BUY
+    subtype: LIMIT_ORDER
+    category: Buy
+  - type: DIY_BUY
+    category: Buy
+
+  # Investment sells
+  - type: DIY_SELL
+    category: Sell
+
+  # Managed (robo-advisor)
+  - type: MANAGED_BUY
+    category: Investment
+  - type: MANAGED_SELL
+    category: Sell
+
+  # Deposits & withdrawals
+  - type: DEPOSIT
+    category: Transfer
+  - type: WITHDRAWAL
+    category: Transfer
+
+  # Currency conversion
+  - type: FUNDS_CONVERSION
+    category: "CAD -> USD"
+
+  # Internal transfers
+  - type: INTERNAL_TRANSFER
+    category: Transfer
+
+  # Credit card payment
+  - type: CREDIT_CARD
+    subtype: PAYMENT
+    category: Credit Card Payment
+  - type: CREDIT_CARD_PAYMENT
+    category: Credit Card Payment
+
+  # Fees
+  - type: FEE
+    category: Financial Fees
+
+# Merchant keyword rules: for CREDIT_CARD PURCHASE/REFUND transactions.
+# Keywords are matched case-insensitively as substrings of the merchant name.
+# First match wins, so put more specific keywords before general ones.
+merchant_rules:
+  # ---- Groceries ----
+  - keyword: loblaws
+    category: Groceries
+  - keyword: no frills
+    category: Groceries
+  - keyword: sobeys
+    category: Groceries
+  - keyword: metro
+    category: Groceries
+  - keyword: food basics
+    category: Groceries
+  - keyword: freshco
+    category: Groceries
+  - keyword: costco
+    category: Groceries
+  - keyword: walmart
+    category: Groceries
+  - keyword: superstore
+    category: Groceries
+  - keyword: farm boy
+    category: Groceries
+  - keyword: whole foods
+    category: Groceries
+
+  # ---- Restaurants & Bars ----
+  - keyword: mcdonald
+    category: Restaurants & Bars
+  - keyword: tim horton
+    category: Restaurants & Bars
+  - keyword: swiss chalet
+    category: Restaurants & Bars
+  - keyword: boston pizza
+    category: Restaurants & Bars
+  - keyword: the keg
+    category: Restaurants & Bars
+  - keyword: east side mario
+    category: Restaurants & Bars
+  - keyword: harveys
+    category: Restaurants & Bars
+  - keyword: subway
+    category: Restaurants & Bars
+  - keyword: popeyes
+    category: Restaurants & Bars
+  - keyword: burger king
+    category: Restaurants & Bars
+  - keyword: a&w
+    category: Restaurants & Bars
+  - keyword: wendy
+    category: Restaurants & Bars
+  - keyword: pizza
+    category: Restaurants & Bars
+
+  # ---- Coffee Shops ----
+  - keyword: starbucks
+    category: Coffee Shops
+  - keyword: second cup
+    category: Coffee Shops
+
+  # ---- Entertainment & Recreation ----
+  - keyword: disney plus
+    category: Entertainment & Recreation
+  - keyword: youtubepremium
+    category: Entertainment & Recreation
+  - keyword: netflix
+    category: Entertainment & Recreation
+  - keyword: spotify
+    category: Entertainment & Recreation
+  - keyword: primevideo
+    category: Entertainment & Recreation
+  - keyword: cineplex
+    category: Entertainment & Recreation
+  - keyword: steam games
+    category: Entertainment & Recreation
+  - keyword: nintendo
+    category: Entertainment & Recreation
+  - keyword: apple.com/bill
+    category: Entertainment & Recreation
+
+  # ---- Education ----
+  - keyword: udemy
+    category: Education
+  - keyword: coursera
+    category: Education
+
+  # ---- Public Transit ----
+  - keyword: presto
+    category: Public Transit
+  - keyword: go transit
+    category: Public Transit
+  - keyword: ttc
+    category: Public Transit
+  - keyword: translink
+    category: Public Transit
+  - keyword: stm
+    category: Public Transit
+  - keyword: oc transpo
+    category: Public Transit
+
+  # ---- Taxi & Ride Shares ----
+  - keyword: lyft
+    category: Taxi & Ride Shares
+  - keyword: uber
+    category: Taxi & Ride Shares
+
+  # ---- Parking & Tolls ----
+  - keyword: 407etr
+    category: Parking & Tolls
+  - keyword: parking
+    category: Parking & Tolls
+
+  # ---- Gas ----
+  - keyword: esso
+    category: Gas
+  - keyword: shell
+    category: Gas
+  - keyword: petro-canada
+    category: Gas
+  - keyword: circle k
+    category: Gas
+  - keyword: pioneer
+    category: Gas
+  - keyword: ultramar
+    category: Gas
+
+  # ---- Auto Maintenance ----
+  - keyword: canadian tire auto
+    category: Auto Maintenance
+  - keyword: midas
+    category: Auto Maintenance
+  - keyword: mr. lube
+    category: Auto Maintenance
+
+  # ---- Internet & Phone ----
+  - keyword: rogers
+    category: Internet & Phone
+  - keyword: bell
+    category: Internet & Phone
+  - keyword: telus
+    category: Internet & Phone
+  - keyword: fido
+    category: Internet & Phone
+  - keyword: koodo
+    category: Internet & Phone
+  - keyword: virgin plus
+    category: Internet & Phone
+
+  # ---- Utilities ----
+  - keyword: hydro
+    category: Gas & Electric
+  - keyword: enbridge
+    category: Gas & Electric
+
+  # ---- Furniture & Housewares ----
+  - keyword: ikea
+    category: Furniture & Housewares
+  - keyword: structube
+    category: Furniture & Housewares
+
+  # ---- Clothing ----
+  - keyword: winners
+    category: Clothing
+  - keyword: old navy
+    category: Clothing
+  - keyword: h&m
+    category: Clothing
+  - keyword: gap
+    category: Clothing
+  - keyword: marks
+    category: Clothing
+
+  # ---- Medical ----
+  - keyword: shoppers drug mart
+    category: Medical
+  - keyword: rexall
+    category: Medical
+  - keyword: pharma
+    category: Medical
+
+  # ---- Dentist ----
+  - keyword: dental
+    category: Dentist
+
+  # ---- Charity ----
+  - keyword: canadahelps
+    category: Charity
+  - keyword: donation
+    category: Charity
+  - keyword: red cross
+    category: Charity
+
+  # ---- Travel & Vacation ----
+  - keyword: expedia
+    category: Travel & Vacation
+  - keyword: booking.com
+    category: Travel & Vacation
+  - keyword: airbnb
+    category: Travel & Vacation
+  - keyword: air canada
+    category: Travel & Vacation
+  - keyword: westjet
+    category: Travel & Vacation
+
+  # ---- Shopping (general — keep near bottom) ----
+  - keyword: canadian tire
+    category: Shopping
+  - keyword: dollarama
+    category: Shopping
+  - keyword: home depot
+    category: Shopping
+  - keyword: best buy
+    category: Shopping
+  - keyword: staples
+    category: Shopping
+
+  # ---- Amazon (keep last among shopping) ----
+  - keyword: amazon
+    category: Amazon

@@ -43,6 +43,10 @@ output/
 .env
 .env.local
 
+# Personal config and category rules
+.config.yaml
+category_rules.yaml
+
 # OS
 .DS_Store
 Thumbs.db
